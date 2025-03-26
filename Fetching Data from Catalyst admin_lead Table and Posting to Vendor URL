@@ -1,0 +1,151 @@
+//////////////////////// **Fetching Data from Catalyst Admin_Lead Table and Posting to Vendor URL** /////////////////////////////////////////
+module.exports = (event, context) => {
+    const axios = require("axios"); // Import axios for making HTTP requests
+
+    try {
+        // Extract raw data from the event object
+        const RAW_DATA = event.getRawData();
+        
+        // Extract API Key, Lead ID, Vendor Service URL, and Translation object
+        const key = RAW_DATA.data[0].APIKey;
+        const crm_id = RAW_DATA.data[0].LeadId;
+        const vendor_service_url = RAW_DATA.data[0].VendorServiceURL;
+        const Translation = RAW_DATA.data[0].Translation;
+
+        // Extract lead-related details from RAW_DATA
+        const cat_firstname = RAW_DATA.data[0].FirstName;
+        const cat_lastname = RAW_DATA.data[0].LastName;
+        const cat_email = RAW_DATA.data[0].Email;
+        const cat_Mobile = RAW_DATA.data[0].Mobile;
+        const cat_street = RAW_DATA.data[0].Street;
+        const cat_city = RAW_DATA.data[0].City;
+        const cat_state = RAW_DATA.data[0].State;
+        const cat_zipcode = RAW_DATA.data[0].ZipCode;
+        const cat_Country = RAW_DATA.data[0].Country;
+        const cat_PostalCode = RAW_DATA.data[0].PostalCode;
+        const cat_company = RAW_DATA.data[0].Company;
+        const cat_LeadSource = RAW_DATA.data[0].LeadSource;
+        const cat_Industry = RAW_DATA.data[0].Industry;
+        const cat_AnnualRevenue = RAW_DATA.data[0].AnnualRevenue;
+        const cat_Fax = RAW_DATA.data[0].Fax;
+        const cat_Website = RAW_DATA.data[0].Website;
+        const cat_LeadStatus = RAW_DATA.data[0].LeadStatus;
+        const cat_Description = RAW_DATA.data[0].Description;
+        const cat_AnnualEscalator = RAW_DATA.data[0].AnnualEscalator;
+        const cat_TermMonths = RAW_DATA.data[0].TermMonths;
+        const cat_APR = RAW_DATA.data[0].APR;
+        const cat_Salutation = RAW_DATA.data[0].Salutation;
+        const cat_CashPrice = RAW_DATA.data[0].CashPrice;
+        const cat_KWhRate = RAW_DATA.data[0].KWhRate;
+
+        console.log("API Key:", key);
+        console.log("Lead ID:", crm_id);
+
+        // API request to get an access token for Zoho
+        const tokenConfig = {
+            method: "post",
+            maxBodyLength: Infinity,
+            url: "https://accounts.zoho.com/oauth/v2/token",
+            params: {
+                refresh_token: "1000.3d229ccd791c77d5c599fbfe05eb943d.1090daa2b2b212b71a6488f4bfd80bc6",
+                client_id: "1000.C2Y21Y2JO59XOM0S6QXV26GSX0O3FT",
+                client_secret: "9e3b0618ee96289bed6a2f9e67473d2d9beff9ce68",
+                grant_type: "refresh_token",
+            },
+        };
+
+        // Request access token
+        axios.request(tokenConfig)
+            .then((response) => {
+                const accessToken = response.data.access_token;
+                console.log("Access Token:", accessToken);
+
+                const run = async () => {
+                    try {
+                        // Prepare request body for Vendor API
+                        const requestBody = {
+                            First_Name: cat_firstname,
+                            Last_Name: cat_lastname,
+                            Email: cat_email,
+                            Mobile: cat_Mobile,
+                            Street: cat_street,
+                            City: cat_city,
+                            State: cat_state,
+                            Zip_Code: cat_zipcode,
+                            Lead_ID: crm_id,
+                            Company: cat_company,
+                            Lead_Source: cat_LeadSource,
+                            Industry: cat_Industry,
+                            Annual_Revenue: cat_AnnualRevenue,
+                            Fax: cat_Fax,
+                            Website: cat_Website,
+                            Lead_Status: cat_LeadStatus,
+                            Description: cat_Description,
+                            Annual_Escalator: cat_AnnualEscalator,
+                            Term_Months: cat_TermMonths,
+                            APR: cat_APR,
+                            Salutation: cat_Salutation,
+                            Cash_Price: cat_CashPrice,
+                            KWh_Rate: cat_KWhRate,
+                            Country: cat_Country,
+                            Postal_Code: cat_PostalCode
+                        };
+
+                        // Map requestBody fields using Translation object
+                        const filteredRequestBody = Object.keys(Translation).reduce((acc, key) => {
+                            if (requestBody.hasOwnProperty(key)) {
+                                acc[Translation[key]] = requestBody[key];
+                            }
+                            return acc;
+                        }, {});
+
+                        console.log("Request Payload::", filteredRequestBody);
+
+                        // Send data to Vendor API
+                        const apiResponse = await axios.post(vendor_service_url, filteredRequestBody, {
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                        });
+
+                        console.log("Server Response:", apiResponse.data);
+
+                        // Prepare Zoho CRM Data for updating the lead
+                        const crmData = {
+                            data: [{ API_data: JSON.stringify(apiResponse.data) }],
+                        };
+
+                        // Configure CRM update request
+                        const crmConfig = {
+                            method: "put",
+                            url: `https://www.zohoapis.com/crm/v7/Leads/${crm_id}`,
+                            headers: {
+                                Authorization: `Zoho-oauthtoken ${accessToken}`,
+                                "Content-Type": "application/json",
+                            },
+                            data: crmData,
+                        };
+
+                        // Update Zoho CRM with response from Vendor API
+                        const crmResponse = await axios.request(crmConfig);
+                        console.log("CRM Update Successful:", crmResponse.data);
+
+                        // Close context after success
+                        context.closeWithSuccess();
+                    } catch (error) {
+                        console.error("CRM update error:", error);
+                        context.closeWithFailure();
+                    }
+                };
+
+                run(); // Execute the async function
+            })
+            .catch((error) => {
+                console.error("Error in getting access token:", error);
+                context.closeWithFailure();
+            });
+    } catch (error) {
+        console.error("Error:", error.message);
+        context.closeWithFailure();
+    }
+};
