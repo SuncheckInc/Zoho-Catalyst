@@ -1,0 +1,136 @@
+ ///////////////////////// Fetching Data from Catalyst Admin_Deal_Contract_Signed Table and Posting to Vendor URL ///////////////////////////////////////////
+
+module.exports = (event, context) => {
+	const axios = require("axios");
+  
+	try {
+	  const RAW_DATA = event.getRawData();
+	  const key = RAW_DATA.data[0].APIKey;
+	  const crm_id = RAW_DATA.data[0].DealId;
+  		const vendor_service_url = RAW_DATA.data[0].VendorServiceURL;
+      const Translation = RAW_DATA.data[0].Translation;
+	  console.log("APIKey ", key);
+	  console.log("DealId ", crm_id);
+  
+  ////////////////////////////////// 21 March - Extracting Data from Event ///////////////////////////////
+
+       // Extract values from RAW_DATA
+        const cat_firstname = RAW_DATA.data[0].CustomerFirstName;
+        const cat_lastname = RAW_DATA.data[0].CustomerLastName;
+		const cat_phone = RAW_DATA.data[0].PhoneNumber;
+        const cat_email = RAW_DATA.data[0].CustomerEmail;
+		const cat_street = RAW_DATA.data[0].StreetProject;
+        const cat_city = RAW_DATA.data[0].CityProject;
+        const cat_state = RAW_DATA.data[0].StateProject;
+        const cat_zipcode = RAW_DATA.data[0].ZipCodeProject;
+		const cat_leadname = RAW_DATA.data[0].LeadName;
+		const cat_leadstatus = RAW_DATA.data[0].LeadStatus;
+        const cat_deal_id = RAW_DATA.data[0].DealId;
+		const cat_suncheckstage = RAW_DATA.data[0].Suncheckstage;
+		const cat_Contractlink = RAW_DATA.data[0].Contractlink;
+
+        // Extract values from Translation
+        const First_Name = Translation.First_name;
+        const Last_Name = Translation.Last_Name;
+		const Phone = Translation.Phone;
+        const Email = Translation.Email;
+        const Street_address = Translation.Street_address;
+        const City = Translation.City;
+		const State = Translation.State;
+		const Zip_code = Translation.Zip_code;
+		const Client_lead_id = Translation.Client_lead_id;
+		const Lead_status = Translation.Lead_status;
+		const Suncheckstage = Translation.Suncheckstage;
+		const Contractlink = Translation.Contractlink;
+		///////////////////////////////// 21 March - End of Data Extraction ///////////////////////////////////////
+
+	  // Get Access Token from Zoho API
+	  let config1 = {
+		method: "post",
+		maxBodyLength: Infinity,
+		//////////////// for CRM sandbox - OAuth Token Generation /////////////////
+		 url: "https://accounts.zoho.com/oauth/v2/token?refresh_token=1000.2387ddae71e2643d5e663896953da9f4.4f7035bd0b28fb10d0fa3a1399434633&client_id=1000.2X71UJS9WCOI4EL2GYERDA9VG9PI3O&client_secret=acd0b3792cf8b9c9e6be37892e3e26f494db5f3c03&grant_type=refresh_token",
+	  };
+  
+	  axios
+		.request(config1)
+		.then((response) => {
+		  const accessToken = response.data.access_token;
+		  console.log("accessToken", accessToken);
+  
+		  const run = async () => {
+			  ///////////////////// 21 March 2025 - Preparing Data for Vendor API /////////////////////////////////////
+                    // Prepare request body for Vendor API
+					 try {
+                        const requestBody = {
+                                First_Name: cat_firstname,
+                                Last_Name: cat_lastname,
+							Phone: cat_phone,
+                                Email: cat_email,
+                                Street_address: cat_street,
+                                City: cat_city,
+                                State: cat_state,
+                                Zip_code: cat_zipcode,
+                                Client_lead_id: cat_leadname,
+                                Lead_status: cat_leadstatus,    
+							Suncheckstage: cat_suncheckstage,
+							Contractlink: cat_Contractlink
+                        };
+
+						// Filter the request body based on the Translation object to map field names correctly
+						const filteredRequestBody = Object.keys(Translation).reduce((acc, key) => {
+                            if (requestBody.hasOwnProperty(key)) {
+                                acc[Translation[key]] = requestBody[key];
+                            }
+                            return acc;
+                        }, {});
+ 
+                        console.log("Request Payload::", filteredRequestBody);
+  //////////////////////////////////// 21 March 2025 - Sending Data to Vendor API ///////////////////////////////////////
+						// Fetch data from Vendor API
+                        const apiResponse = await axios.post(vendor_service_url, filteredRequestBody ,{
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                        });
+						console.log("Server Response:", apiResponse.data);
+  
+			  // Prepare Zoho CRM Data for updating API response
+			  const crmData = {
+				data: [{ API_data : JSON.stringify(apiResponse.data) }],
+			  };
+  
+			  // Configure Zoho CRM update request
+			  const config = {
+				method: "put",
+				url: `https://www.zohoapis.com/crm/v7/Deals/${crm_id}`,
+				headers: {
+				  Authorization: `Zoho-oauthtoken ${accessToken}`,
+				  "Content-Type": "application/json",
+				},
+				data: crmData,
+			  };
+  
+			  // Make API request to update CRM record with API response
+			  const crmResponse = await axios.request(config);
+			  console.log("CRM Update Successful:", crmResponse.data);
+  
+			   // Close context after success
+                        context.closeWithSuccess();
+                    } catch (error) {
+                        console.error("CRM update error:", error);
+                        context.closeWithFailure();
+                    }
+                };
+
+                run();
+            })
+            .catch((error) => {
+                console.error("Error in getting access token:", error);
+                context.closeWithFailure();
+            });
+    } catch (error) {
+        console.error("Error:", error.message);
+        context.closeWithFailure();
+    }
+};
